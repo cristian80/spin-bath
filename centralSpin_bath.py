@@ -35,7 +35,7 @@ class CentralSpinExperiment ():
 
 	    self.prefactor = self.mu0*self.gam_el*self.gam_n/(4*np.pi)*self.hbar**2 /self.hbar/(2*np.pi) #Last /hbar/2pi is to convert from Joule to Hz
 
-	def generate_NSpin_distr (self, conc=0.011, N=25, do_sphere = True):
+	def generate_NSpin_distr (self, conc=0.02, N=25, do_sphere = True):
 
 	    pi = np.pi
 
@@ -144,32 +144,113 @@ class CentralSpinExperiment ():
 		plt.show()
 
 
-	def FID (self, tau):
+	def _set_pars (self, tau):
 
-		self.L = np.zeros ((self._nr_nucl_spins, len(tau)))
-		self.L_fid = np.ones (len(tau)) 
 		self.hp_1 = self.Bp - self.Ap/self.gam_n
 		self.ho_1 = self.Bo - self.Ao/self.gam_n
 		self.h_1 = (self.hp_1**2+self.ho_1**2)**0.5
 		self.hp_0 = self.Bp*np.ones (self._nr_nucl_spins)
 		self.ho_0 = self.Bo*np.ones (self._nr_nucl_spins)
 		self.h_0 = (self.hp_0**2+self.ho_0**2)**0.5
-		self.cos_phi_01 = (self.hp_0*self.hp_1 + self.ho_0*self.ho_1)/(self.h_0*self.h_1)
+		self.phi_01 = np.arccos((self.hp_0*self.hp_1 + self.ho_0*self.ho_1)/(self.h_0*self.h_1))
 
+
+	def FID (self, tau):
+
+		self.L = np.zeros ((self._nr_nucl_spins, len(tau)))
+		self.L_fid = np.ones (len(tau)) 
+		self._set_pars (tau=tau)
 
 		for i in np.arange(self._nr_nucl_spins):
 			th_0 = self.gam_n*self.h_0[i]*tau
 			th_1 = self.gam_n*self.h_1[i]*tau
 			self.L[i, :] = np.cos (th_0/2.)*np.cos (th_1/2.) + \
-						np.sin (th_0/2.)*np.sin (th_1/2.)*self.cos_phi_01[i]
-			plt.plot (tau, self.L[i, :])
-		plt.show()
+						np.sin (th_0/2.)*np.sin (th_1/2.)*np.cos (self.phi_01[i])
+			#plt.plot (tau, self.L[i, :])
+		#plt.show()
 
 		for i in np.arange(self._nr_nucl_spins):
 			self.L_fid = self.L_fid * self.L[i, :]
 
-		plt.plot (tau, self.L_fid)
+		plt.figure (figsize = (20,5))
+		plt.plot (tau*1e6, self.L_fid, linewidth =2, color = 'RoyalBlue')
+		plt.xlabel ('free evolution time [us]', fontsize = 15)
+		plt.title ('Free induction decay', fontsize = 15)
 		plt.show()
+
+	def Hahn_eco (self, tau):
+
+		self.L = np.zeros ((self._nr_nucl_spins, len(tau)))
+		self.L_hahn = np.ones (len(tau)) 
+		self._set_pars (tau=tau)
+
+		self.hp_1 = self.Bp - self.Ap/self.gam_n
+		self.ho_1 = self.Bo - self.Ao/self.gam_n
+		self.h_1 = (self.hp_1**2+self.ho_1**2)**0.5
+		self.hp_0 = self.Bp*np.ones (self._nr_nucl_spins)
+		self.ho_0 = self.Bo*np.ones (self._nr_nucl_spins)
+		self.h_0 = (self.hp_0**2+self.ho_0**2)**0.5
+		self.phi_01 = np.arccos((self.hp_0*self.hp_1 + self.ho_0*self.ho_1)/(self.h_0*self.h_1))
+
+		for i in np.arange(self._nr_nucl_spins):
+			th_0 = self.gam_n*self.h_0[i]*tau
+			th_1 = self.gam_n*self.h_1[i]*tau
+			a1 = np.sin(self.phi_01[i])**2
+			a2 = np.sin(th_0)**2
+			a3 = np.sin(th_1)**2
+
+			self.L[i, :] = np.ones(len(tau)) -2*a1*a2*a3
+
+			plt.plot (tau, self.L[i, :])
+		plt.show()
+
+		for i in np.arange(self._nr_nucl_spins):
+			self.L_hahn = self.L_hahn * self.L[i, :]
+
+		plt.figure (figsize=(30,10))
+		plt.plot (tau, self.L_hahn, 'RoyalBlue')
+		plt.plot (tau, self.L_hahn, 'o')
+		plt.title ('Hahn echo')
+		plt.show()
+
+	def dynamical_decoupling (self, nr_pulses, tau):
+
+		self.N = nr_pulses
+		self.L = np.zeros ((self._nr_nucl_spins, len(tau)))
+		self.L_dd = np.ones (len(tau)) 
+		self._set_pars (tau=tau)
+
+		self.hp_1 = self.Bp - self.Ap/self.gam_n
+		self.ho_1 = self.Bo - self.Ao/self.gam_n
+		self.h_1 = (self.hp_1**2+self.ho_1**2)**0.5
+		self.hp_0 = self.Bp*np.ones (self._nr_nucl_spins)
+		self.ho_0 = self.Bo*np.ones (self._nr_nucl_spins)
+		self.h_0 = (self.hp_0**2+self.ho_0**2)**0.5
+		self.phi_01 = np.arccos((self.hp_0*self.hp_1 + self.ho_0*self.ho_1)/(self.h_0*self.h_1))
+		k = int(self.N/2)
+
+		for i in np.arange(self._nr_nucl_spins):
+			th_0 = self.gam_n*self.h_0[i]*tau
+			th_1 = self.gam_n*self.h_1[i]*tau
+			alpha = np.arctan ((np.sin(th_0/2.)*np.sin(th_1/2.)*np.sin(self.phi_01[i]))/(np.cos(th_0/2.)*np.cos(th_1/2.) - np.sin(th_0/2.)*np.sin(th_1/2.)*np.cos(self.phi_01[i])))
+			theta = 2*np.arccos (np.cos(th_0)*np.cos(th_1) - np.sin(th_0)*np.sin(th_1)*np.cos(self.phi_01[i]))
+
+			if np.mod (self.N, 2) == 0:
+				a1 = (np.sin(alpha))**2
+				a2 = sin(k*theta/2.)**2
+				self.L[i, :] = np.ones(len(tau)) -2*a1*a2
+			else:
+				print "Not yet"
+
+		for i in np.arange(self._nr_nucl_spins):
+			self.L_dd = self.L_dd * self.L[i, :]
+
+		plt.figure (figsize=(30,10))
+		plt.plot (tau, self.L_dd, 'RoyalBlue')
+		plt.plot (tau, self.L_dd, 'o')
+		plt.title ('Dynamical Decoupling')
+		plt.show()
+
 
 
 n1 = NSpin (specie= '15N', loc = [5,6,7])
@@ -178,8 +259,21 @@ exp = CentralSpinExperiment ()
 Ap, Ao, r = exp.generate_NSpin_distr (N = 15)
 exp.set_spin_bath (Ap, Ao)
 exp.plot_spin_bath_info ()
-exp.set_B (Bp=0.101, Bo =0)
-exp.FID (tau = np.linspace (1, 100000, 10000)*1e-9)
+exp.set_B (Bp=0.03, Bo =0.001)
+exp.FID (tau = np.linspace (1, 10000, 10000)*1e-9)
+exp.Hahn_eco (tau = np.linspace (0, 20e-6, 100000))
+exp.dynamical_decoupling (tau = np.linspace (0, 20e-6, 100000), nr_pulses = 128)
+
+#things to do:
+#1) expand to defects different than NV in diamond (for example, S=3/2)
+#2) expand to nuclei different than 13C (19F, 29Si)
+#   - need to re-write the bath generation function to include multiple specied with different concentrations,
+#		plot them in 3D (myavi). Need to modify it such that first I create the specific lattice, given the 
+#		concentrations, and then calculate the hyperfines (for non-interacting systems)
+#3) include two-body clusters contribution. Just keep non-interacting hamiltonian, but include interactons only 
+#		for spins that are sufficiently close by
+#4) q-theory to include effect on nuclear spins (diagonalize sparse matrix up to selected cluster size)
+#		- possibly use QuTip?
 
 
 
